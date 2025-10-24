@@ -1,0 +1,25 @@
+Python specific files
+
+pycache/
+*.pyc
+.pytest_cache/
+.coverage
+
+Dependency directories
+
+venv/
+.env
+.env.*
+node_modules/
+dist/
+build/
+
+IDE files
+
+.idea/
+.vscode/
+
+Streamlit specific files to ignore
+
+src/frontend/.env
+src/frontend/.streamlit/secrets.toml
