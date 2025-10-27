@@ -13,17 +13,19 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
 OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
-def build_nl2gql_prompt(user_text: str, schema_sdl: str) -> str:
-    """Builds the prompt for the LLM to convert natural language to GraphQL."""
-    # Updated instructions to reflect the new 'apply(userName: ...)' mutation
+def build_nl2gql_prompt(user_text: str, schema_sdl: str, role: str) -> str:
+    """Builds the role-aware prompt for the LLM."""
     return (
-        "You are an expert GraphQL assistant. Your task is to convert the user's natural language request "
-        "into a single, valid GraphQL operation that adheres strictly to the provided schema. "
-        "Return ONLY the GraphQL operation with no explanations or markdown fences.\n\n"
+        f"You are a GraphQL assistant for a user with the role: '{role}'. "
+        "Generate a GraphQL operation based on their request and their permissions. "
+        "Return ONLY the GraphQL operation.\n\n"
+        "Permissions:\n"
+        "- 'user' role can query jobs/users and use the 'apply' mutation for themselves.\n"
+        "- 'recruiter' role can query all data and use 'createJob', 'updateJob', 'deleteJob'.\n"
+        "- 'guest' can only use 'login' or 'register'.\n\n"
         "Key Instructions:\n"
-        "- When the user wants to 'apply' a person to a job, ALWAYS use the `apply` mutation. It takes a single `userName` string (e.g., 'Raju boo' or 'Priya Sharma'), a `jobTitle`, and an optional `companyName`.\n"
-        "- For other actions, use the appropriate query or mutation (e.g., `users`, `jobs`, `createUser`, `createJob`).\n"
-        "- If the user's request cannot be mapped to any field in the schema, return the single word: INVALID.\n"
+        "- If the user asks to apply, use the `apply` mutation which now only takes `jobTitle` and `companyName`.\n"
+        "- If a user with the wrong role tries an action, return the word: INVALID.\n"
         "- Do not make up fields or assume logic not present in the schema.\n\n"
         "Schema:\n"
         f"{schema_sdl}\n\n"
@@ -45,12 +47,23 @@ def extract_graphql(text: str) -> str:
                 return parts[i].strip()
     return text.strip()
 
-def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn):
+def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: dict | None = None):
     """
     Processes a natural language query, converts to GraphQL, and optionally executes it.
     This function now consistently returns a tuple: (payload_dict, status_code).
+    
+    Args:
+        user_text: The natural language query from the user
+        schema_sdl: The GraphQL schema as SDL string
+        run_graphql: Whether to execute the generated query
+        graphql_executor_fn: Function to execute GraphQL queries
+        user_context: Optional user context dict containing role information
     """
-    prompt = build_nl2gql_prompt(user_text, schema_sdl)
+    # Extract role from user context, default to "guest" if not authenticated
+    role = user_context.get("role") if user_context else "guest"
+    
+    # Pass the role to the prompt builder
+    prompt = build_nl2gql_prompt(user_text, schema_sdl, role)
 
     headers = {}
     if OLLAMA_API_KEY:

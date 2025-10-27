@@ -4,11 +4,13 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g
 from ariadne import load_schema_from_path, make_executable_schema, graphql_sync
 from ariadne.explorer import ExplorerGraphiQL
 from dotenv import load_dotenv
 from werkzeug.exceptions import HTTPException
+from src.backend.services import auth_service
+from src.backend.resolvers.auth_resolvers import mutation as auth_mutation
 
 # Load environment variables from the config directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '../../config/.env'))
@@ -35,6 +37,16 @@ from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_appli
 # --- Flask app setup ---
 app = Flask(__name__)
 explorer_html = ExplorerGraphiQL().html(None)
+# This function will run before every request
+@app.before_request
+def authenticate_request():
+    """Verify JWT from Authorization header and attach payload to Flask's g object."""
+    g.user = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        g.user = auth_service.verify_token(token)
+
 
 # --- Load schema ---
 schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
@@ -44,7 +56,7 @@ type_defs = load_schema_from_path(schema_path)
 schema = make_executable_schema(
     type_defs,
     [user_query, job_query, app_query],
-    [user_mutation, job_mutation, app_mutation],
+    [user_mutation, job_mutation, app_mutation, auth_mutation], # <-- Add auth_mutation
     application_object
 )
 
@@ -88,7 +100,7 @@ def graphql_server():
     success, result = graphql_sync(
         schema,
         data,
-        context_value={"request": request},
+        context_value={"request": request, "user": g.user},
         debug=app.debug,
     )
     # The main graphql endpoint doesn't need unwrap_graphql_errors,
@@ -122,13 +134,13 @@ def nl2gql():
         return graphql_sync(
             schema,
             gql_data,
-            context_value={"request": request},
+            context_value={"request": request, "user": g.user},
             debug=app.debug,
         )
 
     # The service now reliably returns a (payload_dict, status_code) tuple
     payload, status_code = process_nl2gql_request(
-        user_text, schema_sdl, run_graphql, execute_graphql_query
+        user_text, schema_sdl, run_graphql, execute_graphql_query, g.user  # Pass user context
     )
 
     # We can now simply jsonify the payload and return it with its status

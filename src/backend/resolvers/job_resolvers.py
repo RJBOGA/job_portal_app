@@ -31,7 +31,11 @@ def resolve_job_by_id(*_, jobId):
     return to_job_output(doc)
 
 @mutation.field("createJob")
-def resolve_create_job(*_, input):
+def resolve_create_job(_, info, input):
+    user = info.context.get("user")
+    if not user or user.get("role") != "recruiter":
+        raise PermissionError("Access denied: Recruiter role required.")
+        
     title = require_non_empty_str(input.get("title"), "title")
     
     doc = {
@@ -43,27 +47,50 @@ def resolve_create_job(*_, input):
         "skillsRequired": input.get("skillsRequired", []),
         "description": input.get("description"),
         "postedAt": datetime.utcnow().strftime('%Y-%m-%d'),
+        "recruiterId": user.get("sub"),  # Track who created the job
     }
     insert_job(doc)
     return to_job_output(doc)
 
 @mutation.field("updateJob")
-def resolve_update_job(*_, jobId, input):
+def resolve_update_job(_, info, jobId, input):
+    user = info.context.get("user")
+    if not user or user.get("role") != "recruiter":
+        raise PermissionError("Access denied: Recruiter role required.")
+        
     if "title" in input and input["title"] is not None:
         require_non_empty_str(input["title"], "title")
+
+    # First find the job to check ownership
+    existing_job = find_job_by_id(int(jobId))
+    if not existing_job:
+        raise ValueError(f"Job with ID {jobId} not found for update.")
+        
+    # Only allow updating jobs created by this recruiter
+    if existing_job.get("recruiterId") != user.get("sub"):
+        raise PermissionError("Access denied: You can only update your own job posts.")
 
     set_fields = clean_update_input(input)
     if not set_fields:
         raise ValueError("No fields provided to update.")
 
     updated = update_one_job({"jobId": int(jobId)}, set_fields)
-    if not updated:
-        raise ValueError(f"Job with ID {jobId} not found for update.")
     return to_job_output(updated)
 
 @mutation.field("deleteJob")
-def resolve_delete_job(*_, jobId):
-    count = delete_one_job({"jobId": int(jobId)})
-    if count == 0:
+def resolve_delete_job(_, info, jobId):
+    user = info.context.get("user")
+    if not user or user.get("role") != "recruiter":
+        raise PermissionError("Access denied: Recruiter role required.")
+
+    # First find the job to check ownership
+    existing_job = find_job_by_id(int(jobId))
+    if not existing_job:
         raise ValueError(f"Job with ID {jobId} not found for deletion.")
+        
+    # Only allow deleting jobs created by this recruiter
+    if existing_job.get("recruiterId") != user.get("sub"):
+        raise PermissionError("Access denied: You can only delete your own job posts.")
+
+    count = delete_one_job({"jobId": int(jobId)})
     return True

@@ -21,7 +21,15 @@ query = QueryType()
 mutation = MutationType()
 
 @query.field("users")
-def resolve_users(*_, limit=None, skip=None, FirstName=None, LastName=None, DateOfBirth=None):
+def resolve_users(_, info, limit=None, skip=None, FirstName=None, LastName=None, DateOfBirth=None):
+    user = info.context.get("user")
+    if not user:
+        raise PermissionError("Access denied: Authentication required.")
+        
+    # Only recruiters and admins can list all users
+    if user.get("role") not in ["recruiter", "admin"]:
+        raise PermissionError("Access denied: Only recruiters and admins can list users.")
+        
     if DateOfBirth:
         DateOfBirth = validate_date_str(DateOfBirth)
     q = build_filter(FirstName, LastName, DateOfBirth)
@@ -53,7 +61,16 @@ def resolve_create_user(*_, input):
     return to_user_output(doc)
 
 @mutation.field("updateUser")
-def resolve_update_user(*_, UserID, input):
+def resolve_update_user(_, info, UserID, input):
+    user = info.context.get("user")
+    if not user:
+        raise PermissionError("Access denied: Authentication required.")
+    
+    # Users can only update their own profile
+    # Admins can update any profile
+    if user.get("role") != "admin" and user.get("sub") != int(UserID):
+        raise PermissionError("Access denied: You can only update your own profile.")
+
     if "FirstName" in input and input["FirstName"] is not None:
         require_non_empty_str(input["FirstName"], "FirstName")
     if "LastName" in input and input["LastName"] is not None:
@@ -108,7 +125,16 @@ def resolve_update_users_by_name(*_, FirstName=None, LastName=None, input=None):
     return int(count)
 
 @mutation.field("deleteUser")
-def resolve_delete_user(*_, UserID):
+def resolve_delete_user(_, info, UserID):
+    user = info.context.get("user")
+    if not user:
+        raise PermissionError("Access denied: Authentication required.")
+    
+    # Only admins can delete users
+    # Exception: Users can delete their own profile
+    if user.get("role") != "admin" and user.get("sub") != int(UserID):
+        raise PermissionError("Access denied: Only admins can delete other user profiles.")
+
     return delete_one({"UserID": int(UserID)}) == 1
 
 @mutation.field("deleteUserByFields")

@@ -54,7 +54,17 @@ def resolve_application_job(app_obj, _):
 
 # --- Mutations ---
 @mutation.field("createApplication")
-def resolve_create_application(*_, input):
+def resolve_create_application(_, info, input):
+    user = info.context.get("user")
+    if not user or user.get("role") != "user":
+        raise PermissionError("Access denied: Only users can submit applications.")
+
+    # Ensure user can only create applications for themselves
+    input_user_id = input.get("userId")
+    token_user_id = user.get("sub")
+    if input_user_id != token_user_id:
+        raise PermissionError("Access denied: You can only create applications for yourself.")
+
     user_id = input.get("userId")
     job_id = input.get("jobId")
 
@@ -76,31 +86,17 @@ def resolve_create_application(*_, input):
     return to_application_output(doc)
 
 @mutation.field("apply")
-def resolve_apply(*_, userName, jobTitle, companyName=None):
-    # --- New, more robust name parsing logic ---
-    name_parts = userName.strip().split()
-    first_name = None
-    last_name = None
-
-    if len(name_parts) == 1:
-        first_name = name_parts[0]
-    elif len(name_parts) > 1:
-        first_name = name_parts[0]
-        # Handle multi-word last names like "van der Sar"
-        last_name = " ".join(name_parts[1:])
-
-    if not first_name:
-        raise ValueError("User name cannot be empty.")
-
-    # 1. Find the user using the parsed name parts
-    user_filter = user_repo.name_filter_ci(first_name, last_name)
-    matching_users = user_repo.find_users(user_filter, None, None)
+def resolve_apply(_, info, jobTitle, companyName=None):
+    user = info.context.get("user")
+    if not user or user.get("role") != "user":
+        raise PermissionError("Access denied: Only users can apply for jobs.")
     
-    if len(matching_users) == 0:
-        raise ValueError(f"Could not find a user named '{userName}'.")
-    if len(matching_users) > 1:
-        raise ValueError(f"Found multiple users named '{userName}'. Please be more specific or use a last name.")
-    user = matching_users[0]
+    user_id = user.get("sub")  # Get user ID from the token's subject
+    
+    # Check if user profile exists
+    user_doc = user_repo.find_one_by_id(user_id)
+    if not user_doc:
+        raise ValueError("User profile not found. Please complete your profile first.")
     
     # 2. Find the job (this logic remains the same)
     job_filter = job_repo.build_job_filter(companyName, None, jobTitle)
@@ -118,7 +114,23 @@ def resolve_apply(*_, userName, jobTitle, companyName=None):
 
 
 @mutation.field("updateApplication")
-def resolve_update_application(*_, appId, input):
+def resolve_update_application(_, info, appId, input):
+    user = info.context.get("user")
+    if not user:
+        raise PermissionError("Access denied: Authentication required.")
+
+    # Get the application to check ownership/permissions
+    existing_app = application_repo.find_application_by_id(int(appId))
+    if not existing_app:
+        raise ValueError(f"Application with ID {appId} not found.")
+
+    # Users can only update their own applications
+    # Recruiters can update any application (e.g. to change status)
+    if user.get("role") == "user" and existing_app.get("userId") != user.get("sub"):
+        raise PermissionError("Access denied: You can only update your own applications.")
+    elif user.get("role") != "user" and user.get("role") != "recruiter":
+        raise PermissionError("Access denied: Only users or recruiters can update applications.")
+
     set_fields = clean_update_input(input)
     if not set_fields:
         raise ValueError("No fields provided to update.")

@@ -27,6 +27,8 @@ def applications_collection(): # New
 def counters_collection():
     return _db["counters"]
 
+def accounts_collection():
+    return _db["accounts"]
 
 # --- Counters (User, Job, and new Application counter) ---
 def _ensure_counter(counter_id: str):
