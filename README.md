@@ -4,6 +4,7 @@
 Lightweight job portal backend and Streamlit frontend for demo/testing purposes. This repository contains a Python-based GraphQL backend and a Streamlit frontend used to interact with job postings, applications and user data. It includes services for authentication, resume parsing and other helper components.
 
 ## Key features
+## streamlit run .\src\frontend\app_streamlit.py
 
 - GraphQL backend (schema under `src/backend/schema.graphql`) exposing jobs, users and applications.
 - Streamlit frontend demo app in `src/frontend/app_streamlit.py`.
@@ -102,3 +103,7 @@ This repository is maintained by RJBOGA. Include your preferred license file if 
 ## Contact
 
 For questions or help, open an issue in the repository or contact the maintainer.
+
+### Running without Streamlit (not recommended)
+
+If you run the file directly with `python`, Streamlit will emit warnings and session state features won't work. Use `streamlit run` for the full interactive experience. If you only need to lint or statically inspect the file, running with `python` is fine but the UI won't function the same way.

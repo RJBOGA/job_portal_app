@@ -1,4 +1,5 @@
 from ariadne import MutationType
+from graphql import GraphQLError
 from ..db import accounts_collection, users_collection, next_user_id
 from ..services import auth_service
 from datetime import datetime
@@ -9,9 +10,9 @@ mutation = MutationType()
 def resolve_register(*_, email, password, role):
     # Validation
     if role not in ["user", "recruiter"]:
-        raise ValueError("Role must be either 'user' or 'recruiter'.")
+        raise GraphQLError("Role must be either 'user' or 'recruiter'.")
     if accounts_collection().find_one({"email": email}):
-        raise ValueError("An account with this email already exists.")
+        raise GraphQLError("User already exists")
 
     # Create Account
     hashed_password = auth_service.hash_password(password)
@@ -44,7 +45,7 @@ def resolve_register(*_, email, password, role):
 def resolve_login(*_, email, password):
     account = accounts_collection().find_one({"email": email})
     if not account or not auth_service.check_password(password, account["password"]):
-        raise ValueError("Invalid email or password.")
+        raise GraphQLError("Invalid email or password.")
 
     token = auth_service.create_token(
         account_id=account["_id"],

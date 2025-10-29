@@ -1,0 +1,107 @@
+# src/backend/schema_for_llm.graphql
+
+type AuthPayload {
+  token: String!
+}
+
+type User {
+  UserID: Int!
+  FirstName: String!
+  LastName: String!
+  DateOfBirth: String
+  ProfessionalTitle: String
+  Summary: String
+  skills: [String]
+}
+
+input UserInput {
+  FirstName: String!
+  LastName: String!
+  DateOfBirth: String
+  ProfessionalTitle: String
+  Summary: String
+  skills: [String]
+}
+
+input UserUpdateInput {
+  FirstName: String
+  LastName: String
+  DateOfBirth: String
+  ProfessionalTitle: String
+  Summary: String
+  skills: [String]
+}
+
+type Job {
+  jobId: Int!
+  title: String!
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+  postedAt: String
+}
+
+input JobInput {
+  title: String!
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+}
+
+input JobUpdateInput {
+  title: String
+  company: String
+  location: String
+  salaryRange: String
+  skillsRequired: [String]
+  description: String
+}
+
+type Application {
+  appId: Int!
+  userId: Int!
+  jobId: Int!
+  status: String!
+  submittedAt: String!
+  notes: String
+  candidate: User
+  job: Job
+}
+
+input ApplicationInput {
+  userId: Int!
+  jobId: Int!
+  notes: String
+}
+
+input ApplicationUpdateInput {
+  status: String
+  notes: String
+}
+
+type Query {
+  users(limit: Int, skip: Int, FirstName: String, LastName: String, DateOfBirth: String): [User!]!
+  userById(UserID: Int!): User
+  jobs(limit: Int, skip: Int, company: String, location: String, title: String): [Job!]!
+  jobById(jobId: Int!): Job
+  applications(userId: Int, jobId: Int, status: String): [Application!]!
+  applicationById(appId: Int!): Application
+}
+
+type Mutation {
+  register(email: String!, password: String!, role: String!): AuthPayload!
+  login(email: String!, password: String!): AuthPayload!
+  createUser(input: UserInput!): User!
+  updateUser(UserID: Int!, input: UserUpdateInput!): User!
+  deleteUser(UserID: Int!): Boolean!
+  createJob(input: JobInput!): Job!
+  updateJob(jobId: Int!, input: JobUpdateInput!): Job
+  deleteJob(jobId: Int!): Boolean!
+  createApplication(input: ApplicationInput!): Application!
+  apply(jobTitle: String!, companyName: String): Application!
+  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
+}

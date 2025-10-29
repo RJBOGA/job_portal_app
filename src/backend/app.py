@@ -20,7 +20,6 @@ from src.backend.errors import (
     handle_http_exception,
     handle_value_error,
     handle_generic_exception,
-    # unwrap_graphql_errors is now only used inside the service
     json_error,
 )
 # Import the NL2GQL service function
@@ -37,26 +36,23 @@ from src.backend.db import ensure_user_counter, ensure_job_counter, ensure_appli
 # --- Flask app setup ---
 app = Flask(__name__)
 explorer_html = ExplorerGraphiQL().html(None)
-# This function will run before every request
 @app.before_request
 def authenticate_request():
-    """Verify JWT from Authorization header and attach payload to Flask's g object."""
     g.user = None
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         g.user = auth_service.verify_token(token)
 
-
-# --- Load schema ---
+# --- Load schema for Execution ---
+# The main app uses the full schema with comments for proper validation
 schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
 type_defs = load_schema_from_path(schema_path)
 
-# Combine resolvers from all modules into a list
 schema = make_executable_schema(
     type_defs,
     [user_query, job_query, app_query],
-    [user_mutation, job_mutation, app_mutation, auth_mutation], # <-- Add auth_mutation
+    [user_mutation, job_mutation, app_mutation, auth_mutation],
     application_object
 )
 
@@ -65,54 +61,35 @@ ensure_user_counter()
 ensure_job_counter()
 ensure_application_counter()
 
-# --- Error Handlers ---
+# --- Error Handlers (No Changes) ---
 @app.errorhandler(404)
-def not_found(e):
-    return json_error("Not found", 404)
-
+def not_found(e): return json_error("Not found", 404)
 @app.errorhandler(405)
-def method_not_allowed(e):
-    return json_error("Method not allowed", 405)
-
+def method_not_allowed(e): return json_error("Method not allowed", 405)
 @app.errorhandler(ValueError)
-def value_error(e):
-    return handle_value_error(e)
-
+def value_error(e): return handle_value_error(e)
 @app.errorhandler(Exception)
 def unhandled_exception(e):
-    if isinstance(e, HTTPException):
-        return handle_http_exception(e)
+    if isinstance(e, HTTPException): return handle_http_exception(e)
     return handle_generic_exception(e)
 
 # --- GraphQL endpoints (No Changes) ---
 @app.route("/graphql", methods=["GET"])
-def graphql_explorer():
-    return explorer_html, 200
-
+def graphql_explorer(): return explorer_html, 200
 @app.route("/graphql", methods=["POST"])
 def graphql_server():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        # We call jsonify here because this is the final response layer
         payload, status = json_error("Body must be JSON with 'query' and optional 'variables'", 400)
         return jsonify(payload), status
-
-    success, result = graphql_sync(
-        schema,
-        data,
-        context_value={"request": request, "user": g.user},
-        debug=app.debug,
-    )
-    # The main graphql endpoint doesn't need unwrap_graphql_errors,
-    # as it returns the standard GraphQL JSON response including the "errors" key.
+    success, result = graphql_sync(schema, data, context_value={"request": request, "user": g.user}, debug=app.debug)
     return jsonify(result), (200 if success else 400)
 
 # --- Health check (No Changes) ---
 @app.route("/")
-def health():
-    return jsonify({"status": "Backend is running!"}), 200
+def health(): return jsonify({"status": "Backend is running!"}), 200
 
-# --- NL2GQL Endpoint (Simplified) ---
+# --- NL2GQL Endpoint (Updated to use the new schema file) ---
 @app.route("/nl2gql", methods=["POST"])
 def nl2gql():
     data = request.get_json(silent=True) or {}
@@ -123,27 +100,22 @@ def nl2gql():
         payload, status = json_error("Missing 'query' in body", 400)
         return jsonify(payload), status
 
+    # --- THIS IS THE FIX ---
+    # Load the simplified schema for the LLM prompt
+    schema_for_llm_path = os.path.join(os.path.dirname(__file__), "schema_for_llm.graphql")
     try:
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(schema_for_llm_path, "r", encoding="utf-8") as f:
             schema_sdl = f.read()
     except Exception as e:
-        payload, status = json_error(f"Failed to read schema: {e}", 500)
+        payload, status = json_error(f"Failed to read LLM schema file: {e}", 500)
         return jsonify(payload), status
 
     def execute_graphql_query(gql_data):
-        return graphql_sync(
-            schema,
-            gql_data,
-            context_value={"request": request, "user": g.user},
-            debug=app.debug,
-        )
+        return graphql_sync(schema, gql_data, context_value={"request": request, "user": g.user}, debug=app.debug)
 
-    # The service now reliably returns a (payload_dict, status_code) tuple
     payload, status_code = process_nl2gql_request(
-        user_text, schema_sdl, run_graphql, execute_graphql_query, g.user  # Pass user context
+        user_text, schema_sdl, run_graphql, execute_graphql_query, g.user
     )
-
-    # We can now simply jsonify the payload and return it with its status
     return jsonify(payload), status_code
 
 if __name__ == "__main__":
