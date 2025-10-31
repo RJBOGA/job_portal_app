@@ -2,25 +2,6 @@ import re
 from typing import Optional, Dict, Any, List
 from pymongo import ReturnDocument
 from ..db import users_collection, counters_collection
-from ..db import get_db  # if you need raw DB access
-
-def ensure_user_counter():
-    counters = counters_collection()
-    counters.update_one(
-        {"_id": "UserID"},
-        {"$setOnInsert": {"sequence_value": 0}},
-        upsert=True,
-    )
-
-def next_user_id() -> int:
-    counters = counters_collection()
-    result = counters.find_one_and_update(
-        {"_id": "UserID"},
-        {"$inc": {"sequence_value": 1}},
-        return_document=ReturnDocument.AFTER,
-        upsert=True,
-    )
-    return int(result["sequence_value"])
 
 def to_user_output(doc: dict) -> dict:
     if not doc:
@@ -32,6 +13,7 @@ def to_user_output(doc: dict) -> dict:
         "DateOfBirth": doc.get("DateOfBirth"),
         "ProfessionalTitle": doc.get("ProfessionalTitle"),
         "Summary": doc.get("Summary"),
+        "skills": doc.get("skills"),
     }
 
 def name_filter_ci(first_name: Optional[str], last_name: Optional[str]) -> Dict[str, Any]:

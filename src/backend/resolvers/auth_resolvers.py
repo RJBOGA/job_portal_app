@@ -12,11 +12,12 @@ def resolve_register(*_, email, password, role):
     if role not in ["user", "recruiter"]:
         raise GraphQLError("Role must be either 'user' or 'recruiter'.")
     if accounts_collection().find_one({"email": email}):
-        raise GraphQLError("User already exists")
+        raise GraphQLError("An account with this email already exists.")
 
     # Create Account
     hashed_password = auth_service.hash_password(password)
-    account_id = next_user_id() # We can reuse the user counter for a single ID space
+    # Re-using user counter for a single ID space across accounts and user profiles
+    account_id = next_user_id() 
     
     account_doc = {
         "_id": account_id,
@@ -33,7 +34,7 @@ def resolve_register(*_, email, password, role):
             "UserID": account_id,
             "FirstName": "New", # Default values
             "LastName": "User",
-            # email could be stored here too for convenience
+            "skills": []
         }
         users_collection().insert_one(user_doc)
         

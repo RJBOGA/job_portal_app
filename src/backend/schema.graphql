@@ -5,12 +5,12 @@ Payload returned upon successful authentication.
 """
 type AuthPayload {
   token: String!
-  # We can add user info here later if needed
 }
 
-# --- Global Mutations ---
-
-# --- Existing User Types ---
+# --- User Types (Updated with skills) ---
+"""
+Represents a user or candidate in the system.
+"""
 type User {
   UserID: Int!
   FirstName: String!
@@ -18,25 +18,33 @@ type User {
   DateOfBirth: String
   ProfessionalTitle: String
   Summary: String
+  skills: [String] # <-- Was missing from some places
 }
-input UserInput { # ... no changes
+"""
+Input for creating a new user.
+"""
+input UserInput {
   FirstName: String!
   LastName: String!
   DateOfBirth: String
   ProfessionalTitle: String
   Summary: String
+  skills: [String] # <-- Was missing
 }
-input UserUpdateInput { # ... no changes
+"""
+Input for updating an existing user's profile.
+"""
+input UserUpdateInput {
   FirstName: String
   LastName: String
   DateOfBirth: String
   ProfessionalTitle: String
   Summary: String
+  skills: [String] # <-- Was missing
 }
 
-
-# --- Existing Job Types ---
-type Job { # ... no changes
+# --- Job Types ---
+type Job {
   jobId: Int!
   title: String!
   company: String
@@ -46,7 +54,7 @@ type Job { # ... no changes
   description: String
   postedAt: String
 }
-input JobInput { # ... no changes
+input JobInput {
   title: String!
   company: String
   location: String
@@ -54,7 +62,7 @@ input JobInput { # ... no changes
   skillsRequired: [String]
   description: String
 }
-input JobUpdateInput { # ... no changes
+input JobUpdateInput {
   title: String
   company: String
   location: String
@@ -63,81 +71,72 @@ input JobUpdateInput { # ... no changes
   description: String
 }
 
-
-# --- New Application Type ---
+# --- Application Types ---
 type Application {
   appId: Int!
   userId: Int!
   jobId: Int!
-  status: String!  # e.g., "Applied", "Under Review", "Interview", "Rejected", "Offered"
+  status: String!
   submittedAt: String!
   notes: String
-  
-  # --- Linked entities for richer queries ---
   candidate: User
   job: Job
 }
-
 input ApplicationInput {
   userId: Int!
   jobId: Int!
   notes: String
 }
-
 input ApplicationUpdateInput {
   status: String
   notes: String
 }
 
-
-# --- Updated Query Type ---
+# --- Query Type (Updated with Smart Queries) ---
 type Query {
-  # ... existing User and Job queries
   users(limit: Int, skip: Int, FirstName: String, LastName: String, DateOfBirth: String): [User!]!
   userById(UserID: Int!): User
   jobs(limit: Int, skip: Int, company: String, location: String, title: String): [Job!]!
   jobById(jobId: Int!): Job
-
-  # --- New Application queries ---
   applications(userId: Int, jobId: Int, status: String): [Application!]!
   applicationById(appId: Int!): Application
+  
+  recommendedJobs(skillMatchThreshold: Int = 50): [Job!]!
+  matchingCandidates(jobId: Int!, skillMatchThreshold: Int = 50): [User!]!
+  analyticsJobsCount(location: String, company: String): Int!
 }
 
-
-# --- All Mutations ---
+# --- Mutation Type ---
 type Mutation {
-  # --- Authentication Mutations ---
+  # Auth
   register(email: String!, password: String!, role: String!): AuthPayload!
   login(email: String!, password: String!): AuthPayload!
-
-  # --- User Mutations ---
+  
+  # User
   createUser(input: UserInput!): User!
-  updateUser(UserID: Int!, input: UserInput!): User!
+  updateUser(UserID: Int!, input: UserUpdateInput!): User!
+  
+  # --- THIS WAS THE MISSING PIECE ---
+  """
+  Updates the profile for the currently logged-in user.
+  """
+  updateMyProfile(input: UserUpdateInput!): User!
+  # ------------------------------------
+
+  # Deprecated user mutations
   updateUserByName(FirstName: String, LastName: String, input: UserUpdateInput!): User!
   updateUsersByName(FirstName: String, LastName: String, input: UserUpdateInput!): Int!
   deleteUser(UserID: Int!): Boolean!
   deleteUserByFields(FirstName: String, LastName: String, DateOfBirth: String): Boolean!
   deleteUsersByFields(FirstName: String, LastName: String, DateOfBirth: String): Int!
 
-  # --- Job Mutations ---
+  # Job
   createJob(input: JobInput!): Job!
   updateJob(jobId: Int!, input: JobUpdateInput!): Job
   deleteJob(jobId: Int!): Boolean!
 
-  # --- Application Mutations ---
-  """
-  Creates an application linking a user to a job.
-  """
+  # Application
   createApplication(input: ApplicationInput!): Application!
-  
-  """
-  Smart mutation: Applies a user to a job using names instead of IDs.
-  The backend will look up the user and job IDs.
-  """
-  #apply(userName: String!, jobTitle: String!, companyName: String): Application!
   apply(jobTitle: String!, companyName: String): Application!
-  """
-  Updates the status or notes of an existing application.
-  """
   updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
 }

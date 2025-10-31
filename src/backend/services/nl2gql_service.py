@@ -8,33 +8,41 @@ load_dotenv(dotenv_path=env_path)
 
 from ..errors import json_error, unwrap_graphql_errors
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "https://ollama.com")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
 OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
 def build_nl2gql_prompt(user_text: str, schema_sdl: str, role: str) -> str:
-    """Builds the role-aware prompt for the LLM."""
+    """Builds the role-aware prompt for the LLM with updated, simpler instructions."""
     return (
         f"You are a GraphQL assistant for a user with the role: '{role}'. "
-        "Generate a GraphQL operation based on their request and their permissions. "
+        "Generate a GraphQL operation based on their request and permissions. "
         "Return ONLY the GraphQL operation.\n\n"
-        "Permissions:\n"
-        "- 'user' role can query jobs/users and use the 'apply' mutation for themselves.\n"
-        "- 'recruiter' role can query all data and use 'createJob', 'updateJob', 'deleteJob'.\n"
-        "- 'guest' can only use 'login' or 'register'.\n\n"
-        "Key Instructions:\n"
-        "- If the user asks to apply, use the `apply` mutation which now only takes `jobTitle` and `companyName`.\n"
-        "- If a user with the wrong role tries an action, return the word: INVALID.\n"
-        "- Do not make up fields or assume logic not present in the schema.\n\n"
+        "Permissions & Key Instructions:\n\n"
+        "1.  **Updating User Profile (User Role Only):**\n"
+        "    - If a user says 'update my profile' or 'add skills to my profile', ALWAYS use the `updateMyProfile(input: {{...}})` mutation. It does not need a UserID.\n"
+        "    - Example: 'update my profile with skills in Python and React' -> `mutation {{ updateMyProfile(input: {{ skills: [\"Python\", \"React\"] }}) {{ UserID skills }} }}`\n\n"
+        "2.  **Job Recommendations (User Role Only):**\n"
+        "    - If a user asks to 'find jobs that match my skills' or 'show me recommended jobs', use the `recommendedJobs` query.\n"
+        "    - Example: 'show me recommendations' -> `query {{ recommendedJobs {{ jobId title company }} }}`\n\n"
+        "3.  **Job Management (Recruiter Role Only):**\n"
+        "    - Use `createJob`, `updateJob`, `deleteJob` for job management.\n\n"
+        "4.  **Applying for Jobs (User Role Only):**\n"
+        "    - Use the `apply(jobTitle: ..., companyName: ...)` mutation.\n\n"
+        "5.  **Analytics:**\n"
+        "    - If asked to 'count jobs', use the `analyticsJobsCount` query.\n\n"
+        "6.  **Invalid Requests:**\n"
+        "    - If a user has the wrong role for an action, return the single word: INVALID.\n"
+        "    - If the request cannot be mapped to the schema, return: INVALID.\n\n"
         "Schema:\n"
         f"{schema_sdl}\n\n"
         "User request:\n"
         f"{user_text}"
     )
 
+# ... (The rest of the file - extract_graphql and process_nl2gql_request - has NO CHANGES)
 def extract_graphql(text: str) -> str:
-    """Extract GraphQL code block from model output."""
     if "```" in text:
         parts = text.split("```")
         for i in range(1, len(parts), 2):
@@ -48,27 +56,11 @@ def extract_graphql(text: str) -> str:
     return text.strip()
 
 def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: dict | None = None):
-    """
-    Processes a natural language query, converts to GraphQL, and optionally executes it.
-    This function now consistently returns a tuple: (payload_dict, status_code).
-    
-    Args:
-        user_text: The natural language query from the user
-        schema_sdl: The GraphQL schema as SDL string
-        run_graphql: Whether to execute the generated query
-        graphql_executor_fn: Function to execute GraphQL queries
-        user_context: Optional user context dict containing role information
-    """
-    # Extract role from user context, default to "guest" if not authenticated
     role = user_context.get("role") if user_context else "guest"
-    
-    # Pass the role to the prompt builder
     prompt = build_nl2gql_prompt(user_text, schema_sdl, role)
-
     headers = {}
     if OLLAMA_API_KEY:
         headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
-
     try:
         resp = requests.post(
             OLLAMA_GENERATE_URL,
@@ -80,34 +72,23 @@ def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, g
         return json_error("Upstream NL generation timed out", 504)
     except requests.exceptions.RequestException as e:
         return json_error(f"Ollama network error: {e}", 502)
-
     if not resp.ok:
         return json_error(f"Ollama error {resp.status_code}", 502)
-
     try:
         gen_body = resp.json()
     except ValueError:
         return json_error("Ollama returned non-JSON response", 502)
-
     gen = gen_body.get("response", "")
     gql = extract_graphql(gen)
-
     if not gql or gql.strip().upper() == "INVALID":
         return json_error(
             "Out of scope. Your request could not be mapped to a valid operation. Try asking about users or jobs.",
             400
         )
-
     if not run_graphql:
         return {"graphql": gql}, 200
-
-    # Execute generated GraphQL
     success, result = graphql_executor_fn({"query": gql})
-    
-    # Check for GraphQL-level errors (like our ValueErrors from the resolver)
     wrapped_error = unwrap_graphql_errors(result)
     if wrapped_error:
-        return wrapped_error # This is now a clean (payload, status) tuple
-
-    # Success case
+        return wrapped_error
     return {"graphql": gql, "result": result}, (200 if success else 400)
