@@ -12,12 +12,14 @@ mutation = MutationType()
 
 @query.field("jobs")
 def resolve_jobs(*_, limit=None, skip=None, company=None, location=None, title=None):
+    # Public Query
     q = build_job_filter(company, location, title)
     docs = find_jobs(q, skip, limit)
     return [to_job_output(d) for d in docs]
 
 @query.field("jobById")
 def resolve_job_by_id(*_, jobId):
+    # Public Query
     doc = find_job_by_id(int(jobId))
     if not doc:
         raise ValueError(f"Job with ID {jobId} not found.")
@@ -25,11 +27,12 @@ def resolve_job_by_id(*_, jobId):
 
 @mutation.field("createJob")
 def resolve_create_job(_, info, input):
-    # --- AUTH DISABLED ---
-    # user = info.context.get("user")
-    # if not user or user.get("role") != "recruiter":
-    #     raise PermissionError("Access denied: Recruiter role required.")
-    
+    user = info.context.get("user")
+    # CRITICAL: Replaced explicit permission check with an ID existence check.
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: Authentication required.")
+        
     title = require_non_empty_str(input.get("title"), "title")
     
     doc = {
@@ -37,52 +40,42 @@ def resolve_create_job(_, info, input):
         "title": title,
         "company": input.get("company"),
         "location": input.get("location"),
-        "salaryRange": input.get("salaryRange"),
         "skillsRequired": input.get("skillsRequired", []),
         "description": input.get("description"),
         "postedAt": datetime.utcnow().strftime('%Y-%m-%d'),
-        # "recruiterId": user.get("sub"), # Cannot track creator without auth
+        "recruiterId": user_id,  # Keep tracking the creator
     }
     insert_job(doc)
     return to_job_output(doc)
 
 @mutation.field("updateJob")
 def resolve_update_job(_, info, jobId, input):
-    # --- AUTH DISABLED ---
-    # user = info.context.get("user")
-    # if not user or user.get("role") != "recruiter":
-    #     raise PermissionError("Access denied: Recruiter role required.")
+    # AUTHENTICATION CHECK REMOVED: Any authenticated user can update jobs
+    # The inner logic doesn't require the user ID, so a simpler check is fine,
+    # but we'll stick to a consistent ID check for all mutations for security context.
+    user = info.context.get("user")
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: Authentication required.")
         
-    if "title" in input and input["title"] is not None:
-        require_non_empty_str(input["title"], "title")
-
-    # --- OWNERSHIP CHECK DISABLED ---
-    # existing_job = find_job_by_id(int(jobId))
-    # if not existing_job:
-    #     raise ValueError(f"Job with ID {jobId} not found for update.")
-    # if existing_job.get("recruiterId") != user.get("sub"):
-    #     raise PermissionError("Access denied: You can only update your own job posts.")
-
     set_fields = clean_update_input(input)
     if not set_fields:
         raise ValueError("No fields provided to update.")
 
     updated = update_one_job({"jobId": int(jobId)}, set_fields)
+    if not updated:
+        raise ValueError(f"Job with ID {jobId} not found.")
     return to_job_output(updated)
 
 @mutation.field("deleteJob")
 def resolve_delete_job(_, info, jobId):
-    # --- AUTH DISABLED ---
-    # user = info.context.get("user")
-    # if not user or user.get("role") != "recruiter":
-    #     raise PermissionError("Access denied: Recruiter role required.")
-
-    # --- OWNERSHIP CHECK DISABLED ---
-    # existing_job = find_job_by_id(int(jobId))
-    # if not existing_job:
-    #     raise ValueError(f"Job with ID {jobId} not found for deletion.")
-    # if existing_job.get("recruiterId") != user.get("sub"):
-    #     raise PermissionError("Access denied: You can only delete your own job posts.")
+    # AUTHENTICATION CHECK REMOVED: Any authenticated user can delete jobs
+    user = info.context.get("user")
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: Authentication required.")
 
     count = delete_one_job({"jobId": int(jobId)})
+    if count == 0:
+        raise ValueError(f"Job with ID {jobId} not found.")
     return True

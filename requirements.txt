@@ -6,3 +6,4 @@ requests
 streamlit
 PyJWT
 Flask-Bcrypt
+Flask-Cors

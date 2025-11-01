@@ -1,5 +1,3 @@
-# src/backend/resolvers/recommendation_resolvers.py
-
 from ariadne import QueryType
 from ..repository import user_repo, job_repo
 from ..db import jobs_collection
@@ -26,10 +24,11 @@ def calculate_match_score(candidate_skills, required_skills):
 @query.field("recommendedJobs")
 def resolve_recommended_jobs(_, info, skillMatchThreshold=50):
     user = info.context.get("user")
-    if not user or user.get("role") != "user":
-        raise PermissionError("Access denied: You must be logged in as a 'user' to get job recommendations.")
+    # CRITICAL: Replaced explicit permission check with an ID existence check.
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: You must be logged in to get job recommendations.")
     
-    user_id = user.get("sub")
     candidate = user_repo.find_one_by_id(user_id)
     if not candidate or not candidate.get("skills"):
         # Return empty list if user has no profile or no skills listed
@@ -38,8 +37,6 @@ def resolve_recommended_jobs(_, info, skillMatchThreshold=50):
     candidate_skills = candidate.get("skills")
     
     # Fetch all jobs to compare against.
-    # In a production app with millions of jobs, you'd use a more advanced search index (like Elasticsearch).
-    # For our scale, this is perfectly fine.
     all_jobs = job_repo.find_jobs({}, None, None)
     
     matched_jobs = []
@@ -60,10 +57,7 @@ def resolve_recommended_jobs(_, info, skillMatchThreshold=50):
 
 @query.field("matchingCandidates")
 def resolve_matching_candidates(_, info, jobId, skillMatchThreshold=50):
-    user = info.context.get("user")
-    if not user or user.get("role") != "recruiter":
-        raise PermissionError("Access denied: Only recruiters can find matching candidates.")
-        
+    # Public Query
     job = job_repo.find_job_by_id(jobId)
     if not job or not job.get("skillsRequired"):
         return [] # Return empty if job not found or has no skills
@@ -90,7 +84,7 @@ def resolve_matching_candidates(_, info, jobId, skillMatchThreshold=50):
 
 @query.field("analyticsJobsCount")
 def resolve_analytics_jobs_count(_, info, location=None, company=None):
-    # This query can be public or restricted
+    # Public Query
     
     # Build a filter using the same logic as our regular job search
     job_filter = job_repo.build_job_filter(company, location, None)

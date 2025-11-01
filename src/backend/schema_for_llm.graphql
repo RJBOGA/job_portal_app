@@ -9,15 +9,11 @@ type User {
   skills: [String]
 }
 
-input UserInput {
-  FirstName: String!
-  LastName: String!
-  skills: [String]
-}
-
 input UserUpdateInput {
   FirstName: String
   LastName: String
+  ProfessionalTitle: String
+  Summary: String
   skills: [String]
 }
 
@@ -36,56 +32,45 @@ input JobInput {
   skillsRequired: [String]
 }
 
-input JobUpdateInput {
-  title: String
-  company: String
-  location: String
-  skillsRequired: [String]
-}
-
 type Application {
   appId: Int!
-  userId: Int!
-  jobId: Int!
   status: String!
-}
-
-input ApplicationInput {
-  userId: Int!
-  jobId: Int!
 }
 
 input ApplicationUpdateInput {
   status: String
 }
 
+# --- QUERIES ---
 type Query {
-  users(FirstName: String, LastName: String): [User!]!
-  userById(UserID: Int!): User
-  jobs(company: String, location: String, title: String): [Job!]!
-  jobById(jobId: Int!): Job
-  applications(userId: Int, jobId: Int): [Application!]!
-  applicationById(appId: Int!): Application
-  
-  # New Smart Queries
-  recommendedJobs(skillMatchThreshold: Int): [Job!]!
-  matchingCandidates(jobId: Int!, skillMatchThreshold: Int): [User!]!
+  # Smart Queries First
+  recommendedJobs: [Job!]!
+  matchingCandidates(jobId: Int!): [User!]!
   analyticsJobsCount(location: String, company: String): Int!
+  
+  # Basic Data Queries
+  users: [User!]!
+  userById(UserID: Int!): User
+  jobs(company: String, location: String): [Job!]!
+  jobById(jobId: Int!): Job
+  applications: [Application!]!
 }
 
+# --- MUTATIONS ---
 type Mutation {
+  # Auth
   register(email: String!, password: String!, role: String!): AuthPayload!
   login(email: String!, password: String!): AuthPayload!
   
-  createUser(input: UserInput!): User!
-  updateUser(UserID: Int!, input: UserUpdateInput!): User!
-  updateMyProfile(input: UserUpdateInput!): User! # <-- ADD THIS NEW MUTATION
-  deleteUser(UserID: Int!): Boolean!
+  # User (ONLY the secure one)
+  updateMyProfile(input: UserUpdateInput!): User!
   
+  # Job
   createJob(input: JobInput!): Job!
-  updateJob(jobId: Int!, input: JobUpdateInput!): Job
+  updateJob(jobId: Int!, input: JobUpdateInput!): Job!
   deleteJob(jobId: Int!): Boolean!
   
+  # Application
   apply(jobTitle: String!, companyName: String): Application!
-  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application
+  updateApplication(appId: Int!, input: ApplicationUpdateInput!): Application!
 }

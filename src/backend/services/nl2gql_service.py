@@ -13,28 +13,26 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
 OLLAMA_GENERATE_URL = f"{OLLAMA_HOST}/api/generate"
 
-def build_nl2gql_prompt(user_text: str, schema_sdl: str, role: str) -> str:
-    """Builds the role-aware prompt for the LLM with updated, simpler instructions."""
+def build_nl2gql_prompt(user_text: str, schema_sdl: str) -> str:
+    """Builds a non-restrictive prompt for the LLM with minimal authentication requirements."""
     return (
-        f"You are a GraphQL assistant for a user with the role: '{role}'. "
-        "Generate a GraphQL operation based on their request and permissions. "
-        "Return ONLY the GraphQL operation.\n\n"
-        "Permissions & Key Instructions:\n\n"
-        "1.  **Updating User Profile (User Role Only):**\n"
-        "    - If a user says 'update my profile' or 'add skills to my profile', ALWAYS use the `updateMyProfile(input: {{...}})` mutation. It does not need a UserID.\n"
-        "    - Example: 'update my profile with skills in Python and React' -> `mutation {{ updateMyProfile(input: {{ skills: [\"Python\", \"React\"] }}) {{ UserID skills }} }}`\n\n"
-        "2.  **Job Recommendations (User Role Only):**\n"
-        "    - If a user asks to 'find jobs that match my skills' or 'show me recommended jobs', use the `recommendedJobs` query.\n"
-        "    - Example: 'show me recommendations' -> `query {{ recommendedJobs {{ jobId title company }} }}`\n\n"
-        "3.  **Job Management (Recruiter Role Only):**\n"
-        "    - Use `createJob`, `updateJob`, `deleteJob` for job management.\n\n"
-        "4.  **Applying for Jobs (User Role Only):**\n"
-        "    - Use the `apply(jobTitle: ..., companyName: ...)` mutation.\n\n"
-        "5.  **Analytics:**\n"
-        "    - If asked to 'count jobs', use the `analyticsJobsCount` query.\n\n"
-        "6.  **Invalid Requests:**\n"
-        "    - If a user has the wrong role for an action, return the single word: INVALID.\n"
-        "    - If the request cannot be mapped to the schema, return: INVALID.\n\n"
+        "You are a GraphQL assistant for a job portal. Your job is to translate the user's request into a valid GraphQL operation based on the schema. "
+        "Return ONLY the GraphQL operation code with no explanations.\n\n"
+        "**KEY INSTRUCTIONS:**\n"
+        "1. Most queries are public - freely use:\n"
+        "   - `users` and `userById` for user searches\n"
+        "   - `jobs` and `jobById` for job searches\n"
+        "   - `matchingCandidates` for candidate matching\n"
+        "   - `analyticsJobsCount` for job counts\n\n"
+        "2. Auth-required operations - use these if the request implies it's the logged-in user acting:\n"
+        "   - `updateMyProfile` for profile updates like 'update my skills'\n"
+        "   - `apply` for job applications like 'apply to job X'\n"
+        "   - `recommendedJobs` for personalized recommendations\n\n"
+        "3. Admin operations (no role restrictions) - use if explicitly requested:\n"
+        "   - `createJob` for creating jobs\n"
+        "   - `updateJob`/`deleteJob` for managing jobs\n"
+        "   - `updateUser`/`deleteUser` for managing other users\n\n"
+        "4. If the request cannot be mapped to the schema, return the word: INVALID\n\n"
         "Schema:\n"
         f"{schema_sdl}\n\n"
         "User request:\n"
@@ -56,8 +54,8 @@ def extract_graphql(text: str) -> str:
     return text.strip()
 
 def process_nl2gql_request(user_text: str, schema_sdl: str, run_graphql: bool, graphql_executor_fn, user_context: dict | None = None):
-    role = user_context.get("role") if user_context else "guest"
-    prompt = build_nl2gql_prompt(user_text, schema_sdl, role)
+    # Role parameter removed - not needed in non-RBAC MVP
+    prompt = build_nl2gql_prompt(user_text, schema_sdl)
     headers = {}
     if OLLAMA_API_KEY:
         headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"

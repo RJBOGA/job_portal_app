@@ -1,0 +1,85 @@
+.auth-container {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid #3a3a3a;
+  margin-bottom: 2rem;
+}
+
+.auth-tab {
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: #888;
+  border-bottom: 3px solid transparent;
+  font-size: 1.1em;
+  transition: all 0.2s ease-in-out;
+}
+
+.auth-tab:hover {
+  color: #aaa;
+}
+
+.auth-tab.active {
+  border-bottom: 3px solid #646cff;
+  color: white;
+  font-weight: bold;
+}
+
+.auth-form-container {
+  padding: 2rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background-color: #2e2e2e;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #ccc;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 12px;
+  box-sizing: border-box;
+  background-color: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: white;
+  font-size: 1em;
+}
+
+.auth-button {
+  width: 100%;
+  padding: 12px;
+  font-size: 1.1em;
+  font-weight: bold;
+  background-color: #646cff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.auth-button:hover {
+  background-color: #535bf2;
+}
+
+.auth-error {
+  color: #ff6b6b;
+  margin-top: 1rem;
+  text-align: center;
+}

@@ -4,7 +4,7 @@ from ..validators.common_validators import require_non_empty_str, validate_date_
 from ..db import next_user_id
 from ..repository.user_repo import (
     to_user_output, build_filter, name_filter_ci, find_users, find_one_by_id,
-    insert_user, update_one, update_many, delete_one, delete_many
+    insert_user, update_one, delete_one
 )
 
 query = QueryType()
@@ -12,13 +12,7 @@ mutation = MutationType()
 
 @query.field("users")
 def resolve_users(_, info, limit=None, skip=None, FirstName=None, LastName=None, DateOfBirth=None):
-    # --- AUTH DISABLED ---
-    # user = info.context.get("user")
-    # if not user:
-    #     raise PermissionError("Access denied: Authentication required.")
-    # if user.get("role") not in ["recruiter", "admin"]:
-    #     raise PermissionError("Access denied: Only recruiters can list all users.")
-        
+    # Public Query
     if DateOfBirth:
         DateOfBirth = validate_date_str(DateOfBirth)
     q = build_filter(FirstName, LastName, DateOfBirth)
@@ -27,46 +21,23 @@ def resolve_users(_, info, limit=None, skip=None, FirstName=None, LastName=None,
 
 @query.field("userById")
 def resolve_user_by_id(_, info, UserID):
+    # Public Query: Anyone can look up a user by ID
     doc = find_one_by_id(int(UserID))
-    return to_user_output(doc)
-
-@mutation.field("createUser")
-def resolve_create_user(*_, input):
-    first = require_non_empty_str(input.get("FirstName"), "FirstName")
-    last = require_non_empty_str(input.get("LastName"), "LastName")
-    dob = validate_date_str(input.get("DateOfBirth"))
-    title = (input.get("ProfessionalTitle") or None)
-    summary = (input.get("Summary") or None)
-    skills = input.get("skills", [])
-
-    doc = {
-        "UserID": next_user_id(),
-        "FirstName": first,
-        "LastName": last,
-        "DateOfBirth": dob,
-        "ProfessionalTitle": title,
-        "Summary": summary,
-        "skills": skills,
-    }
-    insert_user(doc)
     return to_user_output(doc)
 
 @mutation.field("updateUser")
 def resolve_update_user(_, info, UserID, input):
-    # --- AUTH DISABLED ---
-    # user = info.context.get("user")
-    # if not user:
-    #     raise PermissionError("Access denied: Authentication required.")
-    # if user.get("role") != "admin" and user.get("sub") != int(UserID):
-    #     raise PermissionError("Access denied: You can only update your own profile.")
-
+    user = info.context.get("user")
+    # CRITICAL: Replaced generic 'if not user' check.
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: Authentication required.")
+    
     if "FirstName" in input and input["FirstName"] is not None:
         require_non_empty_str(input["FirstName"], "FirstName")
     if "LastName" in input and input["LastName"] is not None:
         require_non_empty_str(input["LastName"], "LastName")
-    if "DateOfBirth" in input and input["DateOfBirth"] is not None:
-        input["DateOfBirth"] = validate_date_str(input["DateOfBirth"])
-
+    
     set_fields = clean_update_input(input)
     if not set_fields:
         raise ValueError("No fields provided to update")
@@ -76,18 +47,35 @@ def resolve_update_user(_, info, UserID, input):
 
 @mutation.field("updateMyProfile")
 def resolve_update_my_profile(_, info, input):
-    # This mutation cannot work without authentication.
-    raise NotImplementedError("The 'updateMyProfile' mutation is disabled. Please use 'update user with id <ID> ...' for testing.")
+    user = info.context.get("user")
+    # FIX: This is the exact line that was throwing the error.
+    # Replaced with an explicit check on user_id existence.
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: You must be logged in to update your profile.")
+
+    if "FirstName" in input and input["FirstName"] is not None:
+        require_non_empty_str(input["FirstName"], "FirstName")
+    if "LastName" in input and input["LastName"] is not None:
+        require_non_empty_str(input["LastName"], "LastName")
+
+    set_fields = clean_update_input(input)
+    if not set_fields:
+        raise ValueError("No fields were provided to update.")
+
+    updated_doc = update_one({"UserID": int(user_id)}, set_fields)
+
+    if not updated_doc:
+        raise ValueError(f"Could not find a user profile for your account (ID: {user_id}). Please contact support.")
+        
+    return to_user_output(updated_doc)
 
 @mutation.field("deleteUser")
 def resolve_delete_user(_, info, UserID):
-    # --- AUTH DISABLED ---
-    # user = info.context.get("user")
-    # if not user:
-    #     raise PermissionError("Access denied: Authentication required.")
-    # if user.get("role") != "admin" and user.get("sub") != int(UserID):
-    #     raise PermissionError("Access denied: You can only delete your own profile.")
+    user = info.context.get("user")
+    # CRITICAL: Replaced generic 'if not user' check.
+    user_id = user.get("sub") if user else None
+    if not user_id:
+        raise PermissionError("Access denied: Authentication required.")
     
     return delete_one({"UserID": int(UserID)}) == 1
-
-# ... (Deprecated mutations like updateUserByName are unchanged)
